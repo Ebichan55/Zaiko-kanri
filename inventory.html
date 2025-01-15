@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在庫管理</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        nav {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        nav a {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        nav a:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+            white-space: nowrap; /* テキストの折り返しを防止 */
+        }
+        #inventoryTable tr:nth-child(odd) {
+            background-color: #f0f8ff; /* 薄い青色 */
+        }
+        #inventoryTable tr:nth-child(even) {
+            background-color: white; /* 白色 */
+        }
+        .input-form {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 5px;
+            margin: 5px;
+        }
+        .total-amount {
+            text-align: right;
+            margin-top: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .error-message {
+            color: red;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .edit-form {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* 商品ID, 単価, 数量, 全体金額などの幅を調整 */
+        th:nth-child(1), td:nth-child(1),
+        th:nth-child(3), td:nth-child(3),
+        th:nth-child(4), td:nth-child(4),
+        th:nth-child(6), td:nth-child(6),
+        th:nth-child(7), td:nth-child(7) {
+            width: 100px;  /* 幅を指定 */
+            word-wrap: break-word;  /* テキストが長い場合に折り返す */
+        }
+
+        /* 商品名の幅を調整 */
+        th:nth-child(2), td:nth-child(2) {
+            width: 400px;  /* 幅を指定 */
+            word-wrap: break-word;  /* テキストが長い場合に折り返す */
+        }
+
+        /* カテゴリー名の幅を調整 */
+        th:nth-child(5), td:nth-child(5) {
+            width: 200px;  /* 幅を指定 */
+            word-wrap: break-word;  /* テキストが長い場合に折り返す */
+        }
+
+        .table-wrapper {
+        width: 100%;
+        overflow-x: auto; /* 横スクロールを有効にする */
+        -webkit-overflow-scrolling: touch; /* スムーズなスクロールをサポート */
+        white-space: nowrap; /* テーブルのセルが折り返さないようにする */
+        }
+
+        table {
+        min-width: 1000px; /* 最小幅を指定して、横スクロールが発生するように調整 */
+        border-collapse: collapse;
+        }   
+    </style>
+</head>
+<body>
+
+    <h1>在庫管理</h1>
+    <nav>
+        <a href="index.html">トップ画面</a>
+        <a href="sales_sheet.html">売上計算</a>
+    </nav>
+
+    <!-- 商品入力フォーム -->
+    <div class="input-form">
+        <input type="text" id="productId" placeholder="商品ID" pattern="^[0-9]+$" title="半角数字のみ入力できます">
+        <input type="text" id="productName" placeholder="商品名">
+        <input type="number" id="unitPrice" placeholder="単価" min="0" step="1">
+        <input type="number" id="quantity" placeholder="数量" min="0" step="1">
+        <input type="text" id="category" placeholder="カテゴリー名">
+        <button onclick="addItem()">追加</button>
+    </div>
+
+    <!-- 編集フォーム -->
+    <div class="edit-form" id="editForm" style="display: none;">
+        <h3>商品編集</h3>
+        <input type="text" id="editProductName" placeholder="商品名">
+        <input type="number" id="editUnitPrice" placeholder="単価" min="0" step="1">
+        <input type="number" id="editQuantity" placeholder="数量" min="0" step="1">
+        <input type="text" id="editCategory" placeholder="カテゴリー名">
+        <button onclick="updateItem()">更新</button>
+        <button onclick="cancelEdit()">キャンセル</button>
+    </div>
+
+    <!-- テーブルをラップする div に横スクロールを追加 -->
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>商品ID <button id="sortProductIdBtn" onclick="sortByProductId()">昇順</button></th>
+                    <th>商品名</th>
+                    <th>単価</th>
+                    <th>数量</th>
+                    <th>カテゴリー名 <button id="sortCategoryBtn" onclick="sortByCategory()">昇順</button></th>
+                    <th>全体金額</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="inventoryTable">
+                <!-- 商品情報がここに追加されます -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="total-amount">
+        合計金額: <span id="totalAmountDisplay">0円</span>
+    </div>
+
+    <div class="error-message" id="errorMessage"></div>
+
+    <script>
+        let editingProductId = null; // 編集中の商品IDを保存
+        let productIdSortOrder = 'asc';  // 商品IDのソート順（昇順）
+        let categorySortOrder = 'asc';   // カテゴリー名のソート順（昇順）
+
+        window.onload = function() {
+            loadInventory();
+        };
+
+        function saveInventory(inventory) {
+            localStorage.setItem('inventory', JSON.stringify(inventory));
+        }
+
+        function loadInventory() {
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            const tableBody = document.getElementById('inventoryTable');
+            tableBody.innerHTML = ''; 
+
+            let totalAmount = 0;
+
+            inventory.forEach(item => {
+                const row = document.createElement("tr");
+                const itemTotalAmount = item.unitPrice * item.quantity;
+                totalAmount += itemTotalAmount;
+
+                row.innerHTML = `
+                    <td>${item.productId}</td>
+                    <td>${item.productName}</td>
+                    <td>${item.unitPrice}円</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.category}</td>
+                    <td>${itemTotalAmount}円</td>
+                    <td>
+                        <button onclick="deleteItem('${item.productId}')">削除</button>
+                        <button onclick="editItem('${item.productId}')">編集</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('totalAmountDisplay').textContent = totalAmount + "円";
+        }
+
+        function addItem() {
+            const productId = document.getElementById("productId").value;
+            const productName = document.getElementById("productName").value;
+            const unitPrice = parseFloat(document.getElementById("unitPrice").value);
+            const quantity = parseInt(document.getElementById("quantity").value);
+            const category = document.getElementById("category").value;
+            const errorMessage = document.getElementById("errorMessage");
+
+            errorMessage.textContent = '';
+
+            // バリデーション: 半角数字チェック
+            if (!/^[0-9]+$/.test(productId)) {
+                alert("商品IDは半角数字のみ入力できます。");
+                return;
+            }
+
+            if (productId === "" || productName === "" || isNaN(unitPrice) || isNaN(quantity) || unitPrice <= 0 || quantity <= 0 || category === "") {
+                alert("すべての項目を正しく入力してください。");
+                return;
+            }
+
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+
+            const isDuplicate = inventory.some(item => item.productId === productId);
+            if (isDuplicate) {
+                errorMessage.textContent = "この商品IDはすでに存在します。";
+                return;
+            }
+
+            const totalAmount = unitPrice * quantity;
+
+            const newItem = {
+                productId: productId,
+                productName: productName,
+                unitPrice: unitPrice,
+                quantity: quantity,
+                category: category,
+                totalAmount: totalAmount
+            };
+
+            inventory.push(newItem);
+            saveInventory(inventory);
+
+            loadInventory();
+
+            document.getElementById("productId").value = "";
+            document.getElementById("productName").value = "";
+            document.getElementById("unitPrice").value = "";
+            document.getElementById("quantity").value = "";
+            document.getElementById("category").value = "";
+        }
+
+        function deleteItem(productId) {
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            const updatedInventory = inventory.filter(item => item.productId !== productId);
+            saveInventory(updatedInventory);
+            loadInventory();
+        }
+
+        function editItem(productId) {
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            const itemToEdit = inventory.find(item => item.productId === productId);
+
+            if (itemToEdit) {
+                document.getElementById('editProductName').value = itemToEdit.productName;
+                document.getElementById('editUnitPrice').value = itemToEdit.unitPrice;
+                document.getElementById('editQuantity').value = itemToEdit.quantity;
+                document.getElementById('editCategory').value = itemToEdit.category;
+
+                document.getElementById('editForm').style.display = 'block';
+                editingProductId = productId;
+            }
+        }
+
+        function updateItem() {
+            const productName = document.getElementById('editProductName').value;
+            const unitPrice = parseFloat(document.getElementById('editUnitPrice').value);
+            const quantity = parseInt(document.getElementById('editQuantity').value);
+            const category = document.getElementById('editCategory').value;
+
+            if (productName === "" || isNaN(unitPrice) || isNaN(quantity) || unitPrice <= 0 || quantity <= 0 || category === "") {
+                alert("すべての項目を正しく入力してください。");
+                return;
+            }
+
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            const itemToUpdate = inventory.find(item => item.productId === editingProductId);
+
+            if (itemToUpdate) {
+                itemToUpdate.productName = productName;
+                itemToUpdate.unitPrice = unitPrice;
+                itemToUpdate.quantity = quantity;
+                itemToUpdate.category = category;
+                itemToUpdate.totalAmount = unitPrice * quantity;
+
+                saveInventory(inventory);
+                loadInventory();
+                cancelEdit();
+            }
+        }
+
+        function cancelEdit() {
+            document.getElementById('editForm').style.display = 'none';
+        }
+
+        // 商品IDでソートする関数
+        function sortByProductId() {
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            if (productIdSortOrder === 'asc') {
+                inventory.sort((a, b) => a.productId.localeCompare(b.productId));  // 昇順
+                document.getElementById("sortProductIdBtn").textContent = "降順";
+                productIdSortOrder = 'desc';
+            } else {
+                inventory.sort((a, b) => b.productId.localeCompare(a.productId));  // 降順
+                document.getElementById("sortProductIdBtn").textContent = "昇順";
+                productIdSortOrder = 'asc';
+            }
+
+            saveInventory(inventory);
+            loadInventory();
+        }
+
+        // カテゴリー名でソートする関数
+        function sortByCategory() {
+            const inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+            if (categorySortOrder === 'asc') {
+                inventory.sort((a, b) => a.category.localeCompare(b.category));  // 昇順
+                document.getElementById("sortCategoryBtn").textContent = "降順";
+                categorySortOrder = 'desc';
+            } else {
+                inventory.sort((a, b) => b.category.localeCompare(a.category));  // 降順
+                document.getElementById("sortCategoryBtn").textContent = "昇順";
+                categorySortOrder = 'asc';
+            }
+
+            saveInventory(inventory);
+            loadInventory();
+        }
+    </script>
+
+</body>
+</html>

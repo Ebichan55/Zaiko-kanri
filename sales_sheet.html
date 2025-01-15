@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>販売用シート</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        nav {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        nav a {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        nav a:hover {
+            background-color: #45a049;
+        }
+        .input-form {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        input[type="text"], input[type="number"], select {
+            padding: 5px;
+            margin: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+        }
+        #salesTable tr:nth-child(odd) {
+        background-color: #f0f8ff; /* 薄い青色 */
+        }
+
+        #salesTable tr:nth-child(even) {
+        background-color: white; /* 白色 */
+        }
+        .delete-button {
+            color: red;
+            cursor: pointer;
+        }
+        .total-section {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .total-section span {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>販売用シート</h1>
+    <nav>
+        <a href="index.html">トップ画面</a>
+        <a href="inventory.html">在庫一覧</a>
+    </nav>
+
+    <div class="input-form">
+        <select id="saleProductId" onchange="updateUnitPriceAndLimitQuantity()">
+            <option value="">商品IDを選択</option>
+            <!-- 商品IDが動的に追加される -->
+        </select>
+        <span>単価: </span><span id="unitPriceDisplay">-</span>円
+        <span>最大販売数量: </span><span id="maxQuantityDisplay">-</span>
+        <input type="number" id="saleQuantity" placeholder="販売数量" min="0" max="0">
+        <button onclick="generateSalesSheet()">追加</button>
+    </div>
+
+    <div class="input-form">
+        <label for="shippingCost">配送料: </label>
+        <input type="number" id="shippingCost" placeholder="配送料" min="0" value="0">
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>商品ID</th>
+                <th>販売数量</th>
+                <th>単価</th>
+                <th>販売金額</th>
+                <th>削除</th>
+            </tr>
+        </thead>
+        <tbody id="salesTable">
+            <!-- 販売シートがここに生成されます -->
+        </tbody>
+    </table>
+
+    <div class="total-section">
+        <p>合計金額: <span id="totalAmountDisplay">0円</span></p>
+        <p>10%引き後: <span id="afterDiscountDisplay">0円</span></p>
+        <p>売上金: <span id="netRevenueDisplay">0円</span></p>
+    </div>
+
+    <div class="input-form" style="text-align: center; margin-top: 20px;">
+        <button onclick="confirmSale()">確定</button>
+    </div>
+
+    <script>
+        // 在庫情報をローカルストレージから読み込む
+        function loadInventory() {
+            return JSON.parse(localStorage.getItem('inventory')) || [];
+        }
+
+        // 商品IDをプルダウンメニューに追加
+        function populateProductOptions() {
+            const inventory = loadInventory();
+            const productSelect = document.getElementById("saleProductId");
+
+            // 商品IDが既に存在する場合、プルダウンメニューに追加
+            inventory.forEach(product => {
+                const option = document.createElement("option");
+                option.value = product.productId;
+                option.textContent = product.productId + " - " + product.productName;
+                productSelect.appendChild(option);
+            });
+        }
+
+        // 商品IDが選択されたときに単価と最大販売数量を更新
+        function updateUnitPriceAndLimitQuantity() {
+            const saleProductId = document.getElementById("saleProductId").value;
+            const inventory = loadInventory();
+            const product = inventory.find(item => item.productId === saleProductId);
+
+            if (product) {
+                // 商品が見つかれば単価を表示
+                document.getElementById("unitPriceDisplay").textContent = product.unitPrice;
+                // 最大販売数量を設定
+                document.getElementById("maxQuantityDisplay").textContent = product.quantity;
+                document.getElementById("saleQuantity").max = product.quantity; // 最大数量制限
+            } else {
+                // 商品が見つからない場合はエラーメッセージ
+                document.getElementById("unitPriceDisplay").textContent = "-";
+                document.getElementById("maxQuantityDisplay").textContent = "-";
+            }
+        }
+
+        // 販売用シートを生成
+        function generateSalesSheet() {
+            const saleProductId = document.getElementById("saleProductId").value;
+            const saleQuantity = parseInt(document.getElementById("saleQuantity").value);
+            const inventory = loadInventory();
+            const product = inventory.find(item => item.productId === saleProductId);
+
+            if (!saleProductId || !saleQuantity || !product || saleQuantity > product.quantity) {
+                alert("商品IDまたは販売数量が正しくありません。数量は在庫数以内で入力してください。");
+                return;
+            }
+
+            // 現在までの販売数量を合計
+            const totalSoldQuantity = getTotalSoldQuantity();
+
+            if (totalSoldQuantity + saleQuantity > product.quantity) {
+                alert(`在庫数を超える数量は販売できません。現在の在庫数: ${product.quantity - totalSoldQuantity}`);
+                return;
+            }
+
+            // 単価と販売金額を計算
+            const unitPrice = product.unitPrice;
+            const totalAmount = unitPrice * saleQuantity;
+
+            // 新しい行を作成
+            const row = document.createElement("tr");
+
+            row.innerHTML = `
+                <td>${saleProductId}</td>
+                <td>${saleQuantity}</td>
+                <td>${unitPrice}円</td>
+                <td>${totalAmount}円</td>
+                <td><button class="delete-button" onclick="deleteRow(this)">削除</button></td>
+            `;
+
+            // 表に行を追加
+            document.getElementById("salesTable").appendChild(row);
+
+            // 入力フォームをクリア
+            document.getElementById("saleQuantity").value = "";
+            document.getElementById("unitPriceDisplay").textContent = "-";
+            document.getElementById("maxQuantityDisplay").textContent = "-";
+
+            // 売上計算を再計算
+            calculateTotal();
+        }
+
+        // 削除ボタンの処理
+        function deleteRow(button) {
+            const row = button.closest("tr"); // ボタンが含まれる行を取得
+            row.remove(); // 行を削除
+
+            // 売上計算を再計算
+            calculateTotal();
+        }
+
+        // 売上金額を計算
+        function calculateTotal() {
+            let totalAmount = 0;
+
+            // テーブル内のすべての販売金額を合計
+            const rows = document.querySelectorAll("#salesTable tr");
+            rows.forEach(row => {
+                const amount = parseInt(row.cells[3].textContent.replace("円", ""));
+                totalAmount += amount;
+            });
+
+            // 10%引き後の金額
+            const discountAmount = totalAmount * 0.10;
+            const afterDiscount = totalAmount - discountAmount;
+
+            // 配送料の取得
+            const shippingCost = parseInt(document.getElementById("shippingCost").value) || 0;
+
+            // 売上金の計算
+            const netRevenue = afterDiscount - shippingCost;
+
+            // 表示更新
+            document.getElementById("totalAmountDisplay").textContent = totalAmount + "円";
+            document.getElementById("afterDiscountDisplay").textContent = afterDiscount + "円";
+            document.getElementById("netRevenueDisplay").textContent = netRevenue + "円";
+        }
+
+        // 現在の販売数量の合計を取得
+        function getTotalSoldQuantity() {
+            let totalSoldQuantity = 0;
+            const rows = document.querySelectorAll("#salesTable tr");
+
+            rows.forEach(row => {
+                const quantity = parseInt(row.cells[1].textContent);
+                totalSoldQuantity += quantity;
+            });
+
+            return totalSoldQuantity;
+        }
+
+        // 販売確定ボタンが押された時に在庫から数量を引く
+        function confirmSale() {
+            // 確認ダイアログ
+            const confirm = window.confirm("本当に販売を確定してよろしいでしょうか？");
+
+            if (confirm) {
+                const inventory = loadInventory();
+                const rows = document.querySelectorAll("#salesTable tr");
+
+                rows.forEach(row => {
+                    const productId = row.cells[0].textContent;
+                    const saleQuantity = parseInt(row.cells[1].textContent);
+
+                    const product = inventory.find(item => item.productId === productId);
+
+                    if (product) {
+                        // 在庫から販売数量を引く
+                        product.quantity -= saleQuantity;
+                    }
+                });
+
+                // 在庫を更新
+                localStorage.setItem('inventory', JSON.stringify(inventory));
+
+                // 確認メッセージを表示
+                alert("販売が確定しました。");
+
+                // 販売シートをリセット
+                document.getElementById("salesTable").innerHTML = "";
+
+                // 在庫情報を更新
+                populateProductOptions();
+            } else {
+                // 確定しない場合
+                alert("販売は確定されませんでした。");
+            }
+        }
+
+        // ページが読み込まれた際に商品IDの選択肢を追加
+        window.onload = function() {
+            populateProductOptions();
+        };
+    </script>
+
+</body>
+</html>
